@@ -37,9 +37,11 @@ func main() {
 	}
 	commands.register("login", handlerLogin)
 	commands.register("register", handlerRegister)
+	commands.register("reset", handlerReset)
+	commands.register("users", handlerUsers)
 
 	input := os.Args
-	if len(input) < 3 {
+	if len(input) < 2 {
 		os.Exit(1)
 	}
 
@@ -91,5 +93,40 @@ func handlerRegister(s *State, cmd Command) error {
 	s.cfg.SetUser(user.Name)
 	fmt.Printf("Current user set to %v", user.Name)
 	log.Println(user)
+	return nil
+}
+
+func handlerReset(s *State, cmd Command) error {
+	if len(cmd.args) > 0 {
+		return errors.New("reset takes no args")
+	}
+
+	err := s.db.ResetUsers(context.Background())
+	if err != nil {
+		return errors.New("Unable to reset users database")
+	}
+
+	log.Println("Reset user database")
+	return nil
+}
+
+func handlerUsers(s *State, cmd Command) error {
+	if len(cmd.args) > 0 {
+		return errors.New("users takes no args")
+	}
+
+	users, err := s.db.GetUsers(context.Background())
+	if err != nil {
+		return errors.New("Unable to fetch users from database")
+	}
+
+	for _, user := range users {
+		output := "* " + user.Name
+		if s.cfg.CurrentUserName == user.Name {
+			output += " (current)"
+		}
+		fmt.Println(output)
+	}
+
 	return nil
 }
