@@ -1,8 +1,6 @@
 package main
 
 import (
-	"errors"
-
 	"github.com/Madlite/gator/internal/config"
 	"github.com/Madlite/gator/internal/database"
 )
@@ -24,7 +22,7 @@ type Commands struct {
 func (c *Commands) run(s *State, cmd Command) error {
 	err := c.handler[cmd.name](s, cmd)
 	if err != nil {
-		return errors.New("running command failed")
+		return err
 	}
 	return nil
 }

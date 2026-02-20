@@ -58,6 +58,9 @@ func main() {
 		args: args,
 	}
 	err = commands.run(state, command)
+	if err != nil {
+		log.Fatal(err)
+	}
 
 }
 
@@ -172,17 +175,16 @@ func handlerAggregator(s *State, cmd Command) error {
 }
 
 func handlerAddFeed(s *State, cmd Command) error {
-	if len(cmd.args) < 2 {
+	user, err := s.db.GetUser(context.Background(), s.cfg.CurrentUserName)
+	if err != nil {
+		return err
+	}
+	if len(cmd.args) != 2 {
 		log.Println("addfeed takes 2 args, username and url")
 		os.Exit(1)
 	}
-	userName, url := cmd.args[0], cmd.args[1]
-	fmt.Printf(userName, url)
-	user, err := s.db.GetUser(context.Background(), userName)
-	if err != nil {
-		return errors.New("Unable to fetch user from database")
-	}
 
+	userName, url := cmd.args[0], cmd.args[1]
 	dbParams := database.CreateFeedParams{
 		ID:        uuid.New(),
 		CreatedAt: time.Now(),
@@ -196,7 +198,12 @@ func handlerAddFeed(s *State, cmd Command) error {
 		return errors.New("Error creating feed entry in database")
 	}
 
-	fmt.Print(feed)
+	fmt.Printf("* ID:            %s\n", feed.ID)
+	fmt.Printf("* Created:       %v\n", feed.CreatedAt)
+	fmt.Printf("* Updated:       %v\n", feed.UpdatedAt)
+	fmt.Printf("* Name:          %s\n", feed.Name)
+	fmt.Printf("* URL:           %s\n", feed.Url)
+	fmt.Printf("* UserID:        %s\n", feed.UserID)
 
 	return nil
 }
@@ -211,11 +218,10 @@ func handlerGetFeeds(s *State, cmd Command) error {
 	if err != nil {
 		return errors.New("Error fetching feeds in database")
 	}
-	print(feeds)
 	for _, feed := range feeds {
-		fmt.Println(feed.Name)
-		fmt.Println(feed.Url)
-		fmt.Println(feed.UserID)
+		fmt.Println(feed.FeedName)
+		fmt.Println(feed.FeedUrl)
+		fmt.Println(feed.UserName)
 	}
 
 	return nil
