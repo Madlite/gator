@@ -3,9 +3,13 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/xml"
 	"errors"
 	"fmt"
+	"html"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"time"
 
@@ -39,6 +43,7 @@ func main() {
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
 	commands.register("users", handlerUsers)
+	commands.register("agg", handlerAggregator)
 
 	input := os.Args
 	if len(input) < 2 {
@@ -129,4 +134,65 @@ func handlerUsers(s *State, cmd Command) error {
 	}
 
 	return nil
+}
+
+func handlerAggregator(s *State, cmd Command) error {
+	feedUrl := "https://www.wagslane.dev/index.xml"
+	rssFeed, err := fetchFeed(context.Background(), feedUrl)
+	if err != nil {
+		return errors.New("Error getting example feed")
+	}
+
+	rssFeed.Channel.Title = html.UnescapeString(rssFeed.Channel.Title)
+	rssFeed.Channel.Description = html.UnescapeString(rssFeed.Channel.Description)
+	for i := range rssFeed.Channel.Item {
+		rssFeed.Channel.Item[i].Title = html.UnescapeString(rssFeed.Channel.Item[i].Title)
+		rssFeed.Channel.Item[i].Description = html.UnescapeString(rssFeed.Channel.Item[i].Description)
+	}
+	fmt.Println(rssFeed)
+	return nil
+}
+
+type RSSFeed struct {
+	Channel struct {
+		Title       string    `xml:"title"`
+		Link        string    `xml:"link"`
+		Description string    `xml:"description"`
+		Item        []RSSItem `xml:"item"`
+	} `xml:"channel"`
+}
+
+type RSSItem struct {
+	Title       string `xml:"title"`
+	Link        string `xml:"link"`
+	Description string `xml:"description"`
+	PubDate     string `xml:"pubDate"`
+}
+
+func fetchFeed(ctx context.Context, feedURL string) (*RSSFeed, error) {
+	client := http.DefaultClient
+	payload := RSSFeed{}
+
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, feedURL, nil)
+	if err != nil {
+		return &payload, errors.New("Could not create request")
+	}
+	req.Header.Set("User-Agent", "gator")
+
+	resp, err := client.Do(req)
+	if err != nil {
+		return &payload, errors.New("Error creating client response")
+	}
+	defer resp.Body.Close()
+
+	body, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return &payload, errors.New("Body errors")
+	}
+
+	var data RSSFeed
+	if err := xml.Unmarshal(body, &data); err != nil {
+		return &payload, errors.New("Xml errors")
+	}
+	return &data, nil
 }
