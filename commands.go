@@ -4,10 +4,12 @@ import (
 	"errors"
 
 	"github.com/Madlite/gator/internal/config"
+	"github.com/Madlite/gator/internal/database"
 )
 
 type State struct {
 	cfg *config.Config
+	db  *database.Queries
 }
 
 type Command struct {
