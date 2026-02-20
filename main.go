@@ -42,8 +42,10 @@ func main() {
 	commands.register("login", handlerLogin)
 	commands.register("register", handlerRegister)
 	commands.register("reset", handlerReset)
-	commands.register("users", handlerUsers)
+	commands.register("users", handlerGetUsers)
 	commands.register("agg", handlerAggregator)
+	commands.register("addfeed", handlerAddFeed)
+	commands.register("feeds", handlerGetFeeds)
 
 	input := os.Args
 	if len(input) < 2 {
@@ -61,7 +63,8 @@ func main() {
 
 func handlerLogin(s *State, cmd Command) error {
 	if len(cmd.args) != 1 {
-		return errors.New("The login handler expects a single argument, the username.")
+		log.Println("The login handler expects a single argument, the username")
+		os.Exit(1)
 	}
 	userName := cmd.args[0]
 	_, err := s.db.GetUser(context.Background(), userName)
@@ -81,19 +84,27 @@ func handlerLogin(s *State, cmd Command) error {
 
 func handlerRegister(s *State, cmd Command) error {
 	if len(cmd.args) != 1 {
-		return errors.New("The login handler expects a single argument, the username.")
+		log.Println("The register handler expects a single argument, the username")
+		os.Exit(1)
+	}
+	userName := cmd.args[0]
+	_, err := s.db.GetUser(context.Background(), userName)
+	if err == nil {
+		log.Println("User already exist in database")
+		os.Exit(1)
 	}
 
 	userDB := database.CreateUserParams{
 		ID:        uuid.New(),
 		CreatedAt: time.Now(),
 		UpdatedAt: time.Now(),
-		Name:      cmd.args[0],
+		Name:      userName,
 	}
 
 	user, err := s.db.CreateUser(context.Background(), userDB)
 	if err != nil {
-		os.Exit(1)
+		log.Println(err)
+		return errors.New("Errors creating user in database")
 	}
 	s.cfg.SetUser(user.Name)
 	fmt.Printf("Current user set to %v", user.Name)
@@ -103,7 +114,8 @@ func handlerRegister(s *State, cmd Command) error {
 
 func handlerReset(s *State, cmd Command) error {
 	if len(cmd.args) > 0 {
-		return errors.New("reset takes no args")
+		log.Println("reset takes no args")
+		os.Exit(1)
 	}
 
 	err := s.db.ResetUsers(context.Background())
@@ -115,9 +127,10 @@ func handlerReset(s *State, cmd Command) error {
 	return nil
 }
 
-func handlerUsers(s *State, cmd Command) error {
+func handlerGetUsers(s *State, cmd Command) error {
 	if len(cmd.args) > 0 {
-		return errors.New("users takes no args")
+		log.Println("users takes no args")
+		os.Exit(1)
 	}
 
 	users, err := s.db.GetUsers(context.Background())
@@ -137,6 +150,11 @@ func handlerUsers(s *State, cmd Command) error {
 }
 
 func handlerAggregator(s *State, cmd Command) error {
+	if len(cmd.args) > 0 {
+		log.Println("Agg takes no args")
+		os.Exit(1)
+	}
+
 	feedUrl := "https://www.wagslane.dev/index.xml"
 	rssFeed, err := fetchFeed(context.Background(), feedUrl)
 	if err != nil {
@@ -150,6 +168,56 @@ func handlerAggregator(s *State, cmd Command) error {
 		rssFeed.Channel.Item[i].Description = html.UnescapeString(rssFeed.Channel.Item[i].Description)
 	}
 	fmt.Println(rssFeed)
+	return nil
+}
+
+func handlerAddFeed(s *State, cmd Command) error {
+	if len(cmd.args) < 2 {
+		log.Println("addfeed takes 2 args, username and url")
+		os.Exit(1)
+	}
+	userName, url := cmd.args[0], cmd.args[1]
+	fmt.Printf(userName, url)
+	user, err := s.db.GetUser(context.Background(), userName)
+	if err != nil {
+		return errors.New("Unable to fetch user from database")
+	}
+
+	dbParams := database.CreateFeedParams{
+		ID:        uuid.New(),
+		CreatedAt: time.Now(),
+		UpdatedAt: time.Now(),
+		Name:      userName,
+		Url:       url,
+		UserID:    user.ID,
+	}
+	feed, err := s.db.CreateFeed(context.Background(), dbParams)
+	if err != nil {
+		return errors.New("Error creating feed entry in database")
+	}
+
+	fmt.Print(feed)
+
+	return nil
+}
+
+func handlerGetFeeds(s *State, cmd Command) error {
+	if len(cmd.args) > 0 {
+		log.Println("feeds takes no args")
+		os.Exit(1)
+	}
+
+	feeds, err := s.db.GetFeeds(context.Background())
+	if err != nil {
+		return errors.New("Error fetching feeds in database")
+	}
+	print(feeds)
+	for _, feed := range feeds {
+		fmt.Println(feed.Name)
+		fmt.Println(feed.Url)
+		fmt.Println(feed.UserID)
+	}
+
 	return nil
 }
 
