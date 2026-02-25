@@ -48,6 +48,7 @@ func main() {
 	commands.register("feeds", handlerGetFeeds)
 	commands.register("follow", middlewareLoggedIn(handlerFollow))
 	commands.register("following", middlewareLoggedIn(handlerFollowing))
+	commands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
 
 	input := os.Args
 	if len(input) < 2 {
@@ -324,6 +325,23 @@ func handlerFollowing(s *State, cmd Command, user database.User) error {
 	fmt.Printf("Feeds for user: %s\n", s.cfg.CurrentUserName)
 	for _, feed := range feeds {
 		fmt.Printf("* %s\n", feed.FeedName)
+	}
+
+	return nil
+}
+
+func handlerUnfollow(s *State, cmd Command, user database.User) error {
+	if len(cmd.args) != 1 {
+		log.Println("feeds takes one arg")
+		os.Exit(1)
+	}
+	dbParams := database.DeleteFeedFollowParams{
+		UserID: user.ID,
+		Url:    cmd.args[0],
+	}
+	err := s.db.DeleteFeedFollow(context.Background(), dbParams)
+	if err != nil {
+		return errors.New("Error unfollowing feed")
 	}
 
 	return nil
