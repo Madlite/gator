@@ -156,25 +156,23 @@ func handlerGetUsers(s *State, cmd Command) error {
 }
 
 func handlerAggregator(s *State, cmd Command) error {
-	if len(cmd.args) > 0 {
-		log.Println("Agg takes no args")
+	if len(cmd.args) != 1 {
+		log.Println("addfeed takes 1 arg, time between fetch feed")
 		os.Exit(1)
 	}
 
-	feedUrl := "https://www.wagslane.dev/index.xml"
-	rssFeed, err := fetchFeed(context.Background(), feedUrl)
+	time_between_reqs := cmd.args[0]
+	fmt.Printf("Collecting feeds every %v\n", time_between_reqs)
+
+	timeBetweenRequests, err := time.ParseDuration(time_between_reqs)
 	if err != nil {
-		return errors.New("Error getting example feed")
+		return errors.New("Error with parsing the duration")
 	}
 
-	rssFeed.Channel.Title = html.UnescapeString(rssFeed.Channel.Title)
-	rssFeed.Channel.Description = html.UnescapeString(rssFeed.Channel.Description)
-	for i := range rssFeed.Channel.Item {
-		rssFeed.Channel.Item[i].Title = html.UnescapeString(rssFeed.Channel.Item[i].Title)
-		rssFeed.Channel.Item[i].Description = html.UnescapeString(rssFeed.Channel.Item[i].Description)
+	ticker := time.NewTicker(timeBetweenRequests)
+	for ; ; <-ticker.C {
+		scrapeFeeds(s)
 	}
-	fmt.Println(rssFeed)
-	return nil
 }
 
 func handlerAddFeed(s *State, cmd Command, user database.User) error {
@@ -194,6 +192,7 @@ func handlerAddFeed(s *State, cmd Command, user database.User) error {
 	}
 	feed, err := s.db.CreateFeed(context.Background(), dbParams)
 	if err != nil {
+		log.Print(err)
 		return errors.New("Error creating feed entry in database")
 	}
 	dbParamsFollow := database.CreateFeedFollowParams{
@@ -355,4 +354,27 @@ func middlewareLoggedIn(handler func(s *State, cmd Command, user database.User) 
 		}
 		return handler(s, cmd, user)
 	}
+}
+
+func scrapeFeeds(s *State) error {
+	feed, err := s.db.GetNextFeedToFetch(context.Background())
+	if err != nil {
+		return errors.New("Error fetching the next feed for scrape")
+	}
+
+	err = s.db.MarkFeedFetched(context.Background(), feed.ID)
+	if err != nil {
+		return errors.New("Error setting last_fetched_at")
+	}
+
+	rssFeed, err := fetchFeed(context.Background(), feed.Url)
+	if err != nil {
+		return errors.New("Error setting last_fetched_at")
+	}
+
+	for _, feed := range rssFeed.Channel.Item {
+		fmt.Printf("* %s\n", html.UnescapeString(feed.Title))
+	}
+
+	return nil
 }
