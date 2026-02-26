@@ -6,11 +6,11 @@ import (
 	"encoding/xml"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net/http"
 	"os"
+	"strconv"
 	"time"
 
 	"github.com/Madlite/gator/internal/config"
@@ -49,6 +49,7 @@ func main() {
 	commands.register("follow", middlewareLoggedIn(handlerFollow))
 	commands.register("following", middlewareLoggedIn(handlerFollowing))
 	commands.register("unfollow", middlewareLoggedIn(handlerUnfollow))
+	commands.register("browse", middlewareLoggedIn(handlerBrowse))
 
 	input := os.Args
 	if len(input) < 2 {
@@ -367,13 +368,55 @@ func scrapeFeeds(s *State) error {
 		return errors.New("Error setting last_fetched_at")
 	}
 
-	rssFeed, err := fetchFeed(context.Background(), feed.Url)
+	rssFeeds, err := fetchFeed(context.Background(), feed.Url)
 	if err != nil {
 		return errors.New("Error setting last_fetched_at")
 	}
 
-	for _, feed := range rssFeed.Channel.Item {
-		fmt.Printf("* %s\n", html.UnescapeString(feed.Title))
+	for _, rssFeed := range rssFeeds.Channel.Item {
+		time, err := time.Parse(time.RFC1123Z, rssFeed.PubDate)
+		if err != nil {
+			// some feeds use different formats, handle appropriately
+		}
+		dbParams := database.CreatePostParams{
+			Title:       rssFeed.Title,
+			Url:         rssFeed.Link,
+			Description: rssFeed.Description,
+			PublishedAt: time,
+			FeedID:      feed.ID,
+		}
+		err = s.db.CreatePost(context.Background(), dbParams)
+		if err != nil {
+			log.Printf("Error creating feeds post: %v", err)
+		}
+	}
+
+	return nil
+}
+
+func handlerBrowse(s *State, cmd Command, user database.User) error {
+	limit := 2
+	if len(cmd.args) == 1 {
+		var err error
+		limit, err = strconv.Atoi(cmd.args[0])
+		if err != nil {
+			return errors.New("Error with converting number of feeds to browse to int")
+		}
+	}
+	dbParams := database.GetPostsUserParams{
+		UserID: user.ID,
+		Limit:  int32(limit),
+	}
+	posts, err := s.db.GetPostsUser(context.Background(), dbParams)
+	if err != nil {
+		return errors.New("Error fetching post for user")
+	}
+
+	for _, post := range posts {
+		fmt.Printf("* %v\n", post.Title)
+		fmt.Printf("- %v\n", post.Description)
+		fmt.Printf("- %v\n", post.Url)
+		fmt.Printf("- %v\n", post.PublishedAt)
 	}
 
 	return nil
